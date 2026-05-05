@@ -1,7 +1,6 @@
 {
-  "name": "trustbit-md",
+  "name": "trustbit-vercel-pairing",
   "version": "1.0.0",
-  "main": "index.js",
   "dependencies": {
     "@whiskeysockets/baileys": "latest",
     "@hapi/boom": "^10.0.1",
