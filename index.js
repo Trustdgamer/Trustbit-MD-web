@@ -2,9 +2,9 @@ const express = require('express');
 const { 
     default: makeWASocket, 
     useMultiFileAuthState, 
-    delay, 
-    makeCacheableSignalKeyStore,
-    DisconnectReason
+    Browsers, 
+    fetchLatestBaileysVersion, 
+    makeCacheableSignalKeyStore 
 } = require("@whiskeysockets/baileys");
 const pino = require('pino');
 const fs = require('fs-extra');
@@ -27,58 +27,56 @@ app.get('/code', async (req, res) => {
     num = num.replace(/[^0-9]/g, '');
     visitCount++;
 
-    // Fresh session folder every time to prevent "Couldn't Link"
-    const sessionID = `Trustbit_${Math.random().toString(36).substring(7)}`;
-    const authPath = path.join(__dirname, 'sessions', sessionID);
-    await fs.ensureDir(authPath);
-    
+    // 1. CLEAR OLD SESSIONS FIRST (Fixes "Couldn't Link")
+    const authPath = path.join(__dirname, 'session_' + num);
+    if (fs.existsSync(authPath)) fs.removeSync(authPath);
+
     const { state, saveCreds } = await useMultiFileAuthState(authPath);
+    const { version } = await fetchLatestBaileysVersion();
 
     try {
-        const Trustbit = makeWASocket({
+        const devtrust = makeWASocket({
+            version,
+            logger: pino({ level: 'silent' }),
+            printQRInTerminal: false,
             auth: {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })),
             },
-            printQRInTerminal: false,
-            logger: pino({ level: "fatal" }),
-            // Identity: Official Chrome on Windows (Most Trusted by WhatsApp)
-            browser: ["Chrome (Windows)", "Chrome", "110.0.5481.178"],
-            syncFullHistory: false,
-            markOnlineOnConnect: true
+            browser: Browsers.ubuntu("Chrome")
         });
 
-        // STABILIZER: Wait for the socket to build pre-keys
-        Trustbit.ev.on('creds.update', saveCreds);
-
-        // Give the server 5 seconds to "warm up" before requesting the code
-        setTimeout(async () => {
-            try {
-                if (!Trustbit.authState.creds.registered) {
-                    const code = await Trustbit.requestPairingCode(num);
+        // 2. PAIRING LOGIC FROM YOUR FILE
+        if (!devtrust.authState.creds.registered) {
+            setTimeout(async () => {
+                try {
+                    let code = await devtrust.requestPairingCode(num);
+                    code = code?.match(/.{1,4}/g)?.join("-") || code;
+                    
                     if (!res.headersSent) {
                         res.json({ code: code });
                     }
+                } catch (err) {
+                    console.log("Error getting code:", err.message);
+                    if (!res.headersSent) res.status(500).json({ error: "WA Busy. Try again." });
                 }
-            } catch (pairErr) {
-                console.error("Pairing Error:", pairErr);
-                if (!res.headersSent) res.status(500).json({ error: "WhatsApp refused connection. Try again." });
-            }
-        }, 5000); 
+            }, 3000);
+        }
 
-        Trustbit.ev.on('connection.update', async (update) => {
+        devtrust.ev.on('creds.update', saveCreds);
+        
+        devtrust.ev.on('connection.update', async (update) => {
             const { connection } = update;
             if (connection === 'open') {
                 pairCount++;
-                const credsData = await fs.readJson(path.join(authPath, 'creds.json'));
-                const sessionIDBase64 = Buffer.from(JSON.stringify(credsData)).toString('base64');
+                const credsData = fs.readFileSync(path.join(authPath, 'creds.json'));
+                const sessionID = Buffer.from(credsData).toString('base64');
                 
-                await Trustbit.sendMessage(Trustbit.user.id, { 
-                    text: `*TRUSTBIT MD CONNECTED!* ✅\n\n*SESSION ID:*\n${sessionIDBase64}\n\nPaste this in your Panel.` 
+                await devtrust.sendMessage(devtrust.user.id, { 
+                    text: `*TRUSTBIT MD SESSION ID*\n\n${sessionID}\n\nCopy this to your Panel.` 
                 });
                 
-                // Cleanup
-                setTimeout(() => { fs.remove(authPath).catch(() => {}); }, 10000);
+                setTimeout(() => { fs.removeSync(authPath); }, 5000);
             }
         });
 
@@ -93,8 +91,8 @@ app.get('/admin-data', (req, res) => {
         slots: `${pairCount}/100`,
         visits: visitCount,
         time: moment().tz("Africa/Lagos").format("HH:mm:ss"),
-        runtime: `${Math.floor(diff / 3600000)}h ${Math.floor((diff % 3600000) / 60000)}m`
+        runtime: `${Math.floor(diff/3600000)}h ${Math.floor((diff%3600000)/60000)}m`
     });
 });
 
-app.listen(PORT, () => console.log(`Trustbit Server Live`));
+app.listen(PORT, () => console.log(`Trustbit Web Active`));
