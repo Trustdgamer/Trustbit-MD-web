@@ -1,5 +1,10 @@
 const express = require('express');
-const { default: makeWASocket, useMultiFileAuthState, delay, makeCacheableSignalKeyStore, Browsers } = require("@whiskeysockets/baileys");
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    delay, 
+    makeCacheableSignalKeyStore 
+} = require("@whiskeysockets/baileys");
 const pino = require('pino');
 const fs = require('fs');
 const moment = require('moment-timezone');
@@ -18,11 +23,12 @@ app.get('/code', async (req, res) => {
     if (!num) return res.status(400).json({ error: "Number required" });
     
     visitCount++;
-    // Clean number
     num = num.replace(/[^0-9]/g, '');
 
-    // Create a fresh temp folder for this attempt
+    // Create unique temp directory
     const authPath = `./temp/${num}_${Date.now()}`;
+    if (!fs.existsSync('./temp')) fs.mkdirSync('./temp');
+
     const { state, saveCreds } = await useMultiFileAuthState(authPath);
 
     try {
@@ -33,49 +39,41 @@ app.get('/code', async (req, res) => {
             },
             printQRInTerminal: false,
             logger: pino({ level: "fatal" }),
-            // FIX: Using official Chrome/Ubuntu identity to prevent "Couldn't Link"
-            browser: ["Ubuntu", "Chrome", "20.0.04"], 
-            syncFullHistory: false
+            browser: ["Ubuntu", "Chrome", "20.0.04"],
         });
 
+        // If not registered, request the code
         if (!client.authState.creds.registered) {
-            await delay(2000); // Wait for socket to stabilize
+            await delay(3000); // Give it time to initialize
             const code = await client.requestPairingCode(num);
-            if (!res.headersSent) res.json({ code: code });
+            
+            if (!res.headersSent) {
+                res.json({ code: code }); // Send the 8-digit code
+            }
         }
 
         client.ev.on('creds.update', saveCreds);
 
         client.ev.on('connection.update', async (s) => {
-            const { connection, lastDisconnect } = s;
-            
-            if (connection === 'open') {
+            if (s.connection === 'open') {
                 pairCount++;
-                console.log(`[Trustbit] ${num} Connected!`);
-
-                // Create Session ID
                 const authFile = JSON.parse(fs.readFileSync(`${authPath}/creds.json`));
                 const sessionID = Buffer.from(JSON.stringify(authFile)).toString('base64');
                 
                 await client.sendMessage(client.user.id, { 
-                    text: `*TRUSTBIT MD SESSION ID*\n\n${sessionID}\n\nCopy this ID and put it in your Panel variables.` 
+                    text: `*TRUSTBIT MD SESSION ID*\n\n${sessionID}\n\nCopy this and put it in your Panel.` 
                 });
                 
-                // Small delay then cleanup
+                // Cleanup
                 setTimeout(() => { 
                     try { fs.rmSync(authPath, { recursive: true, force: true }); } catch (e) {}
-                }, 10000);
-            }
-
-            if (connection === 'close') {
-                // If it closes before connecting, cleanup
-                const code = lastDisconnect?.error?.output?.statusCode;
-                if (code !== 401) { /* handle reconnect if needed */ }
+                }, 5000);
             }
         });
-    } catch (e) { 
-        console.log("Error:", e);
-        if (!res.headersSent) res.status(500).json({ error: "System Busy. Try again." }); 
+
+    } catch (e) {
+        console.error("Pairing Error:", e);
+        if (!res.headersSent) res.status(500).json({ error: "Service timed out. Try again." });
     }
 });
 
@@ -91,4 +89,4 @@ app.get('/admin-data', (req, res) => {
     });
 });
 
-app.listen(PORT, () => console.log(`Trustbit MD Live on ${PORT}`));
+app.listen(PORT, () => console.log(`Trustbit Website Live on ${PORT}`));
