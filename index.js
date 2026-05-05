@@ -3,7 +3,6 @@ const {
     default: makeWASocket, 
     useMultiFileAuthState, 
     Browsers, 
-    fetchLatestBaileysVersion, 
     makeCacheableSignalKeyStore 
 } = require("@whiskeysockets/baileys");
 const pino = require('pino');
@@ -27,54 +26,71 @@ app.get('/code', async (req, res) => {
     num = num.replace(/[^0-9]/g, '');
     visitCount++;
 
-    const sessionID = `temp_${Date.now()}`;
-    const authPath = path.join(__dirname, 'sessions', sessionID);
+    // Create a specific folder for this attempt
+    const authPath = path.join(__dirname, 'sessions', `pair_${num}`);
+    await fs.ensureDir(authPath);
+    
     const { state, saveCreds } = await useMultiFileAuthState(authPath);
-    const { version } = await fetchLatestBaileysVersion();
 
     try {
-        const client = makeWASocket({
-            version,
-            logger: pino({ level: 'silent' }),
-            printQRInTerminal: false,
+        const Trustbit = makeWASocket({
             auth: {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })),
             },
-            browser: Browsers.ubuntu("Chrome")
+            printQRInTerminal: false,
+            logger: pino({ level: "fatal" }),
+            // Identity fix: Using Chrome on MacOS is currently more stable for pairing
+            browser: ["Chrome (MacOS)", "Safari", "11.0.0"],
+            syncFullHistory: false
         });
 
-        if (!client.authState.creds.registered) {
-            setTimeout(async () => {
-                try {
-                    let code = await client.requestPairingCode(num);
-                    code = code?.match(/.{1,4}/g)?.join("-") || code;
-                    if (!res.headersSent) res.json({ code: code });
-                } catch (err) {
-                    if (!res.headersSent) res.status(500).json({ error: "Pairing failed" });
+        if (!Trustbit.authState.creds.registered) {
+            // Give the socket 3 seconds to stabilize
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            try {
+                const code = await Trustbit.requestPairingCode(num);
+                if (!res.headersSent) {
+                    res.json({ code: code });
                 }
-            }, 3000);
+            } catch (pairErr) {
+                console.log("Pairing Request Error:", pairErr);
+                if (!res.headersSent) res.status(500).json({ error: "WA Server Refused. Try again." });
+            }
         }
 
-        client.ev.on('creds.update', saveCreds);
-        client.ev.on('connection.update', async (update) => {
+        Trustbit.ev.on('creds.update', saveCreds);
+
+        Trustbit.ev.on('connection.update', async (update) => {
             const { connection } = update;
+
             if (connection === 'open') {
                 pairCount++;
-                // Generate Base64 Session
-                const credsData = fs.readFileSync(path.join(authPath, 'creds.json'));
-                const base64Session = Buffer.from(credsData).toString('base64');
-                
-                await client.sendMessage(client.user.id, { 
-                    text: `*TRUSTBIT MD SESSION ID*\n\n${base64Session}\n\nPaste this in your Panel variables.` 
+                // Convert session to Base64 Session ID
+                const credsFile = path.join(authPath, 'creds.json');
+                const sessionData = await fs.readJson(credsFile);
+                const sessionID = Buffer.from(JSON.stringify(sessionData)).toString('base64');
+
+                await Trustbit.sendMessage(Trustbit.user.id, { 
+                    text: `*TRUSTBIT MD SESSION ID*\n\n${sessionID}\n\nCopy this and paste it in your Panel variables.` 
                 });
-                
-                // Cleanup
-                setTimeout(() => { fs.removeSync(authPath); }, 5000);
+
+                // Cleanup session folder after 10 seconds
+                setTimeout(() => { fs.remove(authPath).catch(e => {}); }, 10000);
             }
         });
+
+        // KEEP ALIVE: Prevent Render from killing the process for 2 minutes
+        setTimeout(() => {
+            if (Trustbit.authState.creds.registered) return;
+            Trustbit.end();
+            fs.remove(authPath).catch(e => {});
+        }, 120000);
+
     } catch (e) {
-        if (!res.headersSent) res.status(500).json({ error: "Server Error" });
+        console.log("Global Error:", e);
+        if (!res.headersSent) res.status(500).json({ error: "Internal Server Error" });
     }
 });
 
@@ -90,4 +106,4 @@ app.get('/admin-data', (req, res) => {
     });
 });
 
-app.listen(PORT, () => console.log(`Trustbit Web Live on ${PORT}`));
+app.listen(PORT, () => console.log(`Trustbit MD Web Server Active on ${PORT}`));
