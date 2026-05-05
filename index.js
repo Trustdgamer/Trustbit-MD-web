@@ -4,7 +4,8 @@ const {
     useMultiFileAuthState, 
     Browsers, 
     fetchLatestBaileysVersion, 
-    makeCacheableSignalKeyStore 
+    makeCacheableSignalKeyStore,
+    DisconnectReason
 } = require("@whiskeysockets/baileys");
 const pino = require('pino');
 const fs = require('fs-extra');
@@ -27,61 +28,72 @@ app.get('/code', async (req, res) => {
     num = num.replace(/[^0-9]/g, '');
     visitCount++;
 
-    // 1. CLEAR OLD SESSIONS FIRST (Fixes "Couldn't Link")
-    const authPath = path.join(__dirname, 'session_' + num);
-    if (fs.existsSync(authPath)) fs.removeSync(authPath);
-
+    const authPath = path.join(__dirname, 'sessions', `pair_${num}_${Date.now()}`);
+    await fs.ensureDir(authPath);
+    
     const { state, saveCreds } = await useMultiFileAuthState(authPath);
     const { version } = await fetchLatestBaileysVersion();
 
     try {
-        const devtrust = makeWASocket({
+        const Trustbit = makeWASocket({
             version,
-            logger: pino({ level: 'silent' }),
-            printQRInTerminal: false,
             auth: {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })),
             },
-            browser: Browsers.ubuntu("Chrome")
+            printQRInTerminal: false,
+            logger: pino({ level: "fatal" }),
+            // Identity: Safari on MacOS (Highest Trust Level)
+            browser: ["Mac OS", "Safari", "10.15.7"],
+            syncFullHistory: false
         });
 
-        // 2. PAIRING LOGIC FROM YOUR FILE
-        if (!devtrust.authState.creds.registered) {
-            setTimeout(async () => {
-                try {
-                    let code = await devtrust.requestPairingCode(num);
-                    code = code?.match(/.{1,4}/g)?.join("-") || code;
-                    
-                    if (!res.headersSent) {
-                        res.json({ code: code });
-                    }
-                } catch (err) {
-                    console.log("Error getting code:", err.message);
-                    if (!res.headersSent) res.status(500).json({ error: "WA Busy. Try again." });
-                }
-            }, 3000);
+        // 1. REQUEST CODE
+        if (!Trustbit.authState.creds.registered) {
+            await new Promise(resolve => setTimeout(resolve, 4000)); // Crucial "Warm-up"
+            const code = await Trustbit.requestPairingCode(num);
+            if (!res.headersSent) res.json({ code: code });
         }
 
-        devtrust.ev.on('creds.update', saveCreds);
-        
-        devtrust.ev.on('connection.update', async (update) => {
-            const { connection } = update;
+        Trustbit.ev.on('creds.update', saveCreds);
+
+        // 2. ANTI-HANG LOGIC (Keeps the socket active)
+        const keepAlive = setInterval(() => {
+            Trustbit.sendPresenceUpdate('available');
+        }, 10000);
+
+        Trustbit.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect } = update;
+
             if (connection === 'open') {
+                clearInterval(keepAlive);
                 pairCount++;
-                const credsData = fs.readFileSync(path.join(authPath, 'creds.json'));
-                const sessionID = Buffer.from(credsData).toString('base64');
+                console.log(`[Trustbit] User ${num} Connected Successfully!`);
+
+                const credsData = await fs.readJson(path.join(authPath, 'creds.json'));
+                const sessionID = Buffer.from(JSON.stringify(credsData)).toString('base64');
                 
-                await devtrust.sendMessage(devtrust.user.id, { 
-                    text: `*TRUSTBIT MD SESSION ID*\n\n${sessionID}\n\nCopy this to your Panel.` 
+                await Trustbit.sendMessage(Trustbit.user.id, { 
+                    text: `*TRUSTBIT MD CONNECTED!* ✅\n\n*SESSION ID:*\n${sessionID}\n\nPaste this into your Panel variables.` 
                 });
-                
-                setTimeout(() => { fs.removeSync(authPath); }, 5000);
+
+                setTimeout(() => { fs.remove(authPath).catch(() => {}); }, 5000);
+            }
+
+            if (connection === 'close') {
+                const reason = lastDisconnect?.error?.output?.statusCode;
+                if (reason !== DisconnectReason.loggedOut) {
+                    // Only restart if not logged out
+                } else {
+                    clearInterval(keepAlive);
+                    fs.remove(authPath).catch(() => {});
+                }
             }
         });
 
     } catch (e) {
-        if (!res.headersSent) res.status(500).json({ error: "Internal Server Error" });
+        console.log("Global Error:", e);
+        if (!res.headersSent) res.status(500).json({ error: "Connection Reset. Try again." });
     }
 });
 
