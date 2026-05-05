@@ -2,65 +2,66 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Trustbit MD</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600&family=Poppins:wght@300;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Poppins:wght@300;600&display=swap" rel="stylesheet">
     <style>
-        body { background: #0b0e14; color: #fff; font-family: 'Poppins', sans-serif; }
-        .glass { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(15px); }
-        .neon-text { color: #00d4ff; text-shadow: 0 0 10px #00d4ff; font-family: 'Orbitron'; }
-        .cyber-btn { background: linear-gradient(90deg, #00d4ff, #0055ff); box-shadow: 0 4px 15px rgba(0,212,255,0.3); }
-        .cyber-btn:disabled { background: #333; box-shadow: none; }
+        body { background: #050505; color: #fff; font-family: 'Poppins', sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.05); }
+        .neon-text { font-family: 'Orbitron'; color: #00f2ff; text-shadow: 0 0 10px #00f2ff; }
+        .cyber-btn { background: linear-gradient(45deg, #00f2ff, #0062ff); box-shadow: 0 0 20px rgba(0, 242, 255, 0.3); }
+        .cyber-btn:disabled { opacity: 0.5; }
     </style>
 </head>
-<body class="flex flex-col items-center justify-center min-h-screen p-6">
+<body class="min-h-screen flex flex-col items-center justify-center p-6">
 
-    <!-- Stats Panel -->
-    <div class="w-full max-w-sm flex justify-between gap-2 mb-6">
-        <div class="glass p-3 rounded-2xl flex-1 text-center">
-            <p class="text-[9px] text-gray-500 uppercase tracking-widest">Nigeria Time</p>
+    <!-- Top Stats -->
+    <div class="w-full max-w-sm flex gap-3 mb-6">
+        <div class="glass p-4 rounded-3xl flex-1 text-center">
+            <p class="text-[10px] text-gray-500 uppercase tracking-widest">NG Time</p>
             <p id="time" class="text-xs font-bold text-cyan-400">00:00:00</p>
         </div>
-        <div class="glass p-3 rounded-2xl flex-1 text-center">
-            <p class="text-[9px] text-gray-500 uppercase tracking-widest">Slots Used</p>
-            <p id="slots" class="text-xs font-bold text-cyan-400">0/100</p>
+        <div class="glass p-4 rounded-3xl flex-1 text-center">
+            <p class="text-[10px] text-gray-500 uppercase tracking-widest">Slots</p>
+            <p class="text-xs font-bold text-cyan-400">Available</p>
         </div>
     </div>
 
-    <!-- Pairing Card -->
-    <div class="glass w-full max-w-sm p-10 rounded-[3rem] shadow-2xl relative">
-        <h1 class="text-3xl font-bold text-center neon-text mb-2 uppercase">Trustbit MD</h1>
-        <p class="text-center text-gray-500 text-[10px] uppercase tracking-[3px] mb-10">Linking System V3</p>
+    <!-- Main Card -->
+    <div class="glass w-full max-w-sm p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
+        <div class="absolute -top-20 -left-20 w-40 h-40 bg-cyan-500/10 rounded-full blur-3xl"></div>
+        
+        <h1 class="text-3xl font-bold text-center neon-text mb-2 tracking-tighter">TRUSTBIT MD</h1>
+        <p class="text-center text-[10px] text-gray-500 uppercase tracking-[4px] mb-10">Pairing Server V3</p>
 
-        <div class="space-y-6">
-            <input type="number" id="number" placeholder="234..." class="w-full bg-black/40 border border-white/10 p-5 rounded-2xl outline-none focus:border-cyan-400 transition-all">
-            <button id="getbtn" onclick="getCode()" class="w-full cyber-btn p-5 rounded-2xl font-bold text-black uppercase text-xs tracking-widest active:scale-95 transition-all">Get Pairing Code</button>
+        <div class="space-y-5">
+            <input type="number" id="num" placeholder="234..." class="w-full bg-white/5 border border-white/10 p-5 rounded-2xl outline-none focus:border-cyan-400 transition-all text-center text-lg">
+            <button id="btn" onclick="getCode()" class="w-full cyber-btn p-5 rounded-2xl font-bold text-black uppercase text-xs tracking-widest active:scale-95 transition-all">Get Pairing Code</button>
         </div>
 
-        <div id="loader" class="hidden mt-8 text-center">
-            <div class="animate-spin h-6 w-6 border-2 border-cyan-400 border-t-transparent rounded-full mx-auto"></div>
-        </div>
+        <div id="loader" class="hidden mt-8 flex justify-center"><div class="animate-spin h-6 w-6 border-2 border-cyan-400 border-t-transparent rounded-full"></div></div>
 
-        <div id="result" class="hidden mt-10 text-center animate-pulse">
-            <p class="text-[10px] text-cyan-400 mb-2 tracking-widest">YOUR CODE</p>
-            <h2 id="pair-code" class="text-5xl font-bold tracking-widest"></h2>
+        <div id="result" class="hidden mt-10 text-center animate-bounce">
+            <p class="text-[10px] text-cyan-400 mb-2">WHATSAPP CODE</p>
+            <h2 id="pair-code" class="text-5xl font-bold tracking-[10px]"></h2>
         </div>
     </div>
 
     <script>
-        async function updateData() {
-            const res = await fetch('/admin-data');
-            const data = await res.json();
-            document.getElementById('time').innerText = data.time;
-            document.getElementById('slots').innerText = data.slots;
+        async function updateStats() {
+            try {
+                const res = await fetch('/api/admin');
+                const data = await res.json();
+                document.getElementById('time').innerText = data.time;
+            } catch(e) {}
         }
-        setInterval(updateData, 1000);
+        setInterval(updateStats, 1000);
 
         async function getCode() {
-            const num = document.getElementById('number').value;
-            const btn = document.getElementById('getbtn');
-            if(!num) return alert("Please enter number");
+            const num = document.getElementById('num').value;
+            const btn = document.getElementById('btn');
+            if(!num) return alert("Enter number!");
 
             btn.disabled = true;
             btn.innerText = "CONNECTING...";
@@ -68,7 +69,7 @@
             document.getElementById('result').classList.add('hidden');
 
             try {
-                const res = await fetch(`/code?number=${num}`);
+                const res = await fetch(`/api/code?number=${num}`);
                 const data = await res.json();
                 
                 document.getElementById('loader').classList.add('hidden');
@@ -79,10 +80,10 @@
                     document.getElementById('result').classList.remove('hidden');
                     document.getElementById('pair-code').innerText = data.code;
                 } else {
-                    alert(data.error || "Connection Error");
+                    alert("WhatsApp took too long. Refresh and try again.");
                 }
             } catch(e) {
-                alert("Server busy, try again in 10 seconds.");
+                alert("Server Timeout. This is normal on first try. Try again.");
                 location.reload();
             }
         }
