@@ -62,40 +62,7 @@
         }
         setInterval(updateAdmin, 1000);
 
-        async function getCode() {
-    const num = document.getElementById('number').value;
-    const loader = document.getElementById('loader');
-    const codeDisplay = document.getElementById('code-display');
-    const pairCode = document.getElementById('pair-code');
-    const btnText = document.getElementById('btn-text');
-    
-    if(!num) return alert("Enter your WhatsApp number!");
-
-    // UI Reset
-    loader.classList.remove('hidden');
-    codeDisplay.classList.add('hidden');
-    btnText.innerText = "Generating...";
-
-    try {
-        const res = await fetch(`/code?number=${num}`);
-        const data = await res.json();
         
-        loader.classList.add('hidden');
-        btnText.innerText = "Get Pairing Code";
-
-        if (data.code) {catch        codeDisplay.classList.remove('hidden');
-            pairCode.innerText = data.code; // This shows the 8 digits
-        } else if (data.error) {
-            alert("Error: " + data.error);
-        } else {
-            alert("Unexpected error from server.");
-        }
-    } catch(e) {
-        loader.classList.add('hidden');
-        btnText.innerText = "Get Pairing Code";
-        alert("Server is offline. Check Render logs.");
-    }
-        }
  </script>
 </body>
 </html>
