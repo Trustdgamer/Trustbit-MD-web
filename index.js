@@ -12,12 +12,15 @@ const moment = require('moment-timezone');
 
 const app = express();
 
-app.get('/api/code', async (req, res) => {
+// Variable to track start time for runtime
+const startTime = Date.now();
+
+app.get('/code', async (req, res) => {
     let num = req.query.number;
     if (!num) return res.status(400).json({ error: "Number required" });
     num = num.replace(/[^0-9]/g, '');
 
-    // Vercel only allows writing to /tmp
+    // Vercel only allows writing to /tmp folder
     const authPath = path.join('/tmp', `session_${num}`);
     if (fs.existsSync(authPath)) fs.removeSync(authPath);
 
@@ -37,15 +40,17 @@ app.get('/api/code', async (req, res) => {
         });
 
         if (!Trustbit.authState.creds.registered) {
-            // Short 3s delay to stabilize
+            // Wait 3 seconds for stabilization
             await new Promise(resolve => setTimeout(resolve, 3000));
             const code = await Trustbit.requestPairingCode(num);
             
-            // Send code to UI immediately
-            res.json({ code: code });
+            if (!res.headersSent) {
+                res.json({ code: code });
+            }
         }
 
         Trustbit.ev.on('creds.update', saveCreds);
+        
         Trustbit.ev.on('connection.update', async (update) => {
             if (update.connection === 'open') {
                 const credsData = fs.readFileSync(path.join(authPath, 'creds.json'));
@@ -55,23 +60,21 @@ app.get('/api/code', async (req, res) => {
                     text: `*TRUSTBIT MD SESSION ID*\n\n${sessionID}\n\nPaste this in your Panel.` 
                 });
                 
-                // Cleanup
                 fs.removeSync(authPath);
                 Trustbit.end();
             }
         });
 
     } catch (e) {
-        if (!res.headersSent) res.status(500).json({ error: "Try again" });
+        if (!res.headersSent) res.status(500).json({ error: "WA Error" });
     }
 });
 
-// Admin stats endpoint
-app.get('/api/admin', (req, res) => {
+app.get('/admin-data', (req, res) => {
+    const diff = Date.now() - startTime;
     res.json({
         time: moment().tz("Africa/Lagos").format("HH:mm:ss"),
-        status: "Online",
-        slots: "Active (100 Limit)"
+        runtime: `${Math.floor(diff/3600000)}h ${Math.floor((diff%3600000)/60000)}m`
     });
 });
 
