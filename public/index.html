@@ -3,83 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trustbit MD - Pairing</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <title>Trustbit MD - Cloud Pairing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&family=Poppins:wght@300;600&display=swap" rel="stylesheet">
     <style>
-        body {
-            margin: 0; padding: 0;
-            font-family: 'Poppins', sans-serif;
-            background: radial-gradient(circle at top right, #0a192f, #020c1b);
-            color: white;
-            display: flex; align-items: center; justify-content: center; height: 100vh;
-        }
-        .container {
-            width: 90%; max-width: 400px;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 30px; border-radius: 20px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
-            text-align: center; border: 1px solid rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-        }
-        h1 { font-weight: 600; color: #64ffda; margin-bottom: 10px; }
-        p { font-size: 0.9rem; color: #8892b0; margin-bottom: 25px; }
-        input {
-            width: 100%; padding: 15px; margin-bottom: 20px;
-            border-radius: 10px; border: none; outline: none;
-            background: #112240; color: white; font-size: 1rem; box-sizing: border-box;
-        }
-        button {
-            width: 100%; padding: 15px; border-radius: 10px; border: none;
-            background: #64ffda; color: #020c1b; font-weight: 600;
-            cursor: pointer; transition: 0.3s; font-size: 1rem;
-        }
-        button:hover { background: #4cc9ac; transform: translateY(-2px); }
-        #pairingCode {
-            margin-top: 25px; font-size: 2rem; font-weight: 600;
-            color: #64ffda; letter-spacing: 5px; display: none;
-            padding: 15px; border: 2px dashed #64ffda; border-radius: 10px;
-        }
-        .loader {
-            display: none; width: 30px; height: 30px;
-            border: 4px solid #f3f3f3; border-top: 4px solid #64ffda;
-            border-radius: 50%; animation: spin 1s linear infinite;
-            margin: 20px auto;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        body { background: #020617; font-family: 'Poppins', sans-serif; color: #f8fafc; }
+        .neon-border { border: 1px solid rgba(34, 211, 238, 0.3); box-shadow: 0 0 15px rgba(34, 211, 238, 0.1); }
+        .cyber-btn { background: linear-gradient(90deg, #06b6d4, #3b82f6); transition: 0.3s; }
+        .cyber-btn:hover { box-shadow: 0 0 20px #06b6d4; transform: scale(1.02); }
+        .font-cyber { font-family: 'Orbitron', sans-serif; }
     </style>
 </head>
-<body>
-    <div class="container">
-        <h1>Trustbit MD</h1>
-        <p>Enter your phone number with country code (e.g. 23490...)</p>
-        <input type="number" id="number" placeholder="2341234567890">
-        <button onclick="getCode()">Get Pairing Code</button>
-        <div id="loader" class="loader"></div>
-        <div id="pairingCode"></div>
+<body class="p-4 flex flex-col items-center justify-center min-h-screen">
+
+    <!-- Admin Top Bar -->
+    <div class="w-full max-w-md grid grid-cols-2 gap-2 mb-6">
+        <div class="bg-slate-900/50 p-3 rounded-xl neon-border text-center">
+            <p class="text-[10px] text-cyan-400 uppercase tracking-widest">Nigeria Time</p>
+            <p id="time" class="text-sm font-cyber">00:00:00</p>
+        </div>
+        <div class="bg-slate-900/50 p-3 rounded-xl neon-border text-center">
+            <p class="text-[10px] text-cyan-400 uppercase tracking-widest">Bot Runtime</p>
+            <p id="runtime" class="text-sm font-cyber">0h 0m</p>
+        </div>
+    </div>
+
+    <!-- Main Card -->
+    <div class="w-full max-w-md bg-slate-900 p-8 rounded-[2rem] shadow-2xl border border-white/5 relative overflow-hidden">
+        <div class="absolute -top-10 -right-10 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl"></div>
+        
+        <h1 class="text-3xl font-bold text-center mb-2 font-cyber bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">TRUSTBIT MD</h1>
+        <p class="text-center text-slate-400 text-xs mb-8">Cloud Pairing System • Slots: <span id="slots">0/100</span></p>
+
+        <div class="space-y-4">
+            <div>
+                <label class="text-[10px] text-slate-500 ml-1 mb-1 block uppercase">WhatsApp Number</label>
+                <input type="number" id="number" placeholder="23412345678" class="w-full bg-slate-800 border border-white/5 p-4 rounded-2xl focus:ring-2 focus:ring-cyan-500 outline-none">
+            </div>
+            
+            <button onclick="getCode()" id="btn-text" class="w-full cyber-btn p-4 rounded-2xl font-bold text-slate-900 uppercase tracking-widest">Get Pairing Code</button>
+        </div>
+
+        <div id="loader" class="hidden py-6"><div class="animate-spin h-6 w-6 border-2 border-cyan-500 border-t-transparent rounded-full mx-auto"></div></div>
+
+        <div id="code-display" class="hidden mt-8 text-center animate-bounce">
+            <p class="text-xs text-cyan-400 mb-2">LINKING CODE</p>
+            <div id="pair-code" class="text-5xl font-bold font-cyber tracking-widest text-white"></div>
+        </div>
     </div>
 
     <script>
+        async function updateAdmin() {
+            const res = await fetch('/admin-data');
+            const data = await res.json();
+            document.getElementById('time').innerText = data.time;
+            document.getElementById('runtime').innerText = data.runtime;
+            document.getElementById('slots').innerText = data.slots;
+        }
+        setInterval(updateAdmin, 1000);
+
         async function getCode() {
             const num = document.getElementById('number').value;
-            const codeDiv = document.getElementById('pairingCode');
-            const loader = document.getElementById('loader');
+            if(!num) return alert("Enter number!");
             
-            if (!num) return alert("Please enter your number!");
-            
-            loader.style.display = 'block';
-            codeDiv.style.display = 'none';
+            document.getElementById('loader').classList.remove('hidden');
+            document.getElementById('code-display').classList.add('hidden');
 
             try {
-                const response = await fetch(`/code?number=${num}`);
-                const data = await response.json();
-                loader.style.display = 'none';
-                codeDiv.style.display = 'block';
-                codeDiv.innerHTML = data.code;
-            } catch (err) {
-                loader.style.display = 'none';
-                alert("Error getting code. Try again.");
-            }
+                const res = await fetch(`/code?number=${num}`);
+                const data = await res.json();
+                document.getElementById('loader').classList.add('hidden');
+                document.getElementById('code-display').classList.remove('hidden');
+                document.getElementById('pair-code').innerText = data.code;
+            } catch(e) { alert("Error connecting to Trustbit server."); }
         }
     </script>
 </body>
-  </html>
+</html>
